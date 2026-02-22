@@ -3,7 +3,7 @@ version: "3.8"
 services:
   networkbot:
     build: .
-    container_name: networkbot-ai
+    container_name: networkbot
     # Optional: add env_file: .env if you have a .env file (not required; use platform env vars or web UI config)
     ports:
       - "${PORT:-3000}:3000"
