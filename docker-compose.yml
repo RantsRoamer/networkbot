@@ -4,7 +4,7 @@ services:
   networkbot:
     build: .
     container_name: networkbot-ai
-    env_file: .env
+    # Optional: add env_file: .env if you have a .env file (not required; use platform env vars or web UI config)
     ports:
       - "${PORT:-3000}:3000"
     restart: unless-stopped

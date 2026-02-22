@@ -1,5 +1,5 @@
 {
-  "name": "networkbot-ai",
+  "name": "networkbot",
   "version": "1.0.0",
   "description": "AI-powered network monitoring assistant with web chat and UniFi integration",
   "main": "app.js",
