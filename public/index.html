@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetworkBot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>NETWORKBOT</h1>
+            <p class="subtitle">AI-POWERED NETWORK MONITORING</p>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="dashboard">DASHBOARD</button>
+            <button class="tab-button" data-tab="chat">CHAT</button>
+            <button class="tab-button" data-tab="schedules">SCHEDULES</button>
+            <button class="tab-button" data-tab="config">CONFIG</button>
+        </nav>
+
+        <div id="status" class="status-message"></div>
+
+        <!-- Dashboard Tab -->
+        <main id="dashboardTab" class="tab-content active">
+            <div class="dashboard-header-row">
+                <h2 class="dashboard-title">System Dashboard</h2>
+                <button type="button" id="dashboardRefreshBtn" class="chat-clear-btn">Refresh</button>
+            </div>
+            <div id="dashboardContent" class="dashboard-content">
+                <div class="dashboard-grid">
+                    <section class="dashboard-card" id="dashboardSystemCard">
+                        <h3>System</h3>
+                        <div id="dashboardSystem" class="dashboard-stats"></div>
+                    </section>
+                    <section class="dashboard-card" id="dashboardMonitoringCard">
+                        <h3>Monitoring</h3>
+                        <div id="dashboardMonitoring" class="dashboard-stats"></div>
+                    </section>
+                </div>
+                <section class="dashboard-card dashboard-card-full">
+                    <h3>Recent log</h3>
+                    <div id="dashboardLog" class="dashboard-log"></div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Chat Tab -->
+        <main id="chatTab" class="tab-content">
+            <div class="chat-container">
+                <div class="chat-header-row">
+                    <span class="chat-header-label">Chat</span>
+                    <button type="button" id="clearChatBtn" class="chat-clear-btn" title="Clear chat history">Clear</button>
+                </div>
+                <div id="chatMessages" class="chat-messages"></div>
+                <div class="chat-input-container">
+                    <form id="chatForm" class="chat-form">
+                        <input 
+                            type="text" 
+                            id="chatInput" 
+                            class="chat-input" 
+                            placeholder="> Ask about status, logs, or diagnostics..." 
+                            autocomplete="off"
+                            required
+                        >
+                        <button type="submit" id="chatSendBtn" class="chat-send-btn">Send</button>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <!-- Schedules Tab -->
+        <main id="schedulesTab" class="tab-content">
+            <div class="schedules-header-row">
+                <h2 class="schedules-title">Scheduled checks</h2>
+                <span id="schedulerHeartbeat" class="scheduler-heartbeat" title="Scheduler heartbeat">—</span>
+                <button type="button" id="schedulesRefreshBtn" class="chat-clear-btn">Refresh</button>
+            </div>
+            <p class="schedules-intro">Run any request (e.g. system status, diagnostics) on a schedule or once at a set time. Use the heartbeat to confirm the scheduler is running (no cron required). Notify by email when issues are found or on every run.</p>
+            <div class="schedules-layout">
+                <section class="schedules-list-section">
+                    <h3>Jobs</h3>
+                    <div id="schedulesList" class="schedules-list"></div>
+                    <template id="scheduleItemTemplate">
+                        <div class="schedule-item" data-job-id="">
+                            <div class="schedule-item-header">
+                                <span class="schedule-item-name"></span>
+                                <span class="schedule-item-badges"></span>
+                                <div class="schedule-item-actions">
+                                    <button type="button" class="schedule-run-btn" title="Run now">Run</button>
+                                    <button type="button" class="schedule-edit-btn" title="Edit">Edit</button>
+                                    <button type="button" class="schedule-delete-btn" title="Delete">×</button>
+                                </div>
+                            </div>
+                            <div class="schedule-item-meta"></div>
+                            <div class="schedule-item-request"></div>
+                        </div>
+                    </template>
+                </section>
+                <section class="schedules-form-section">
+                    <h3 id="scheduleFormTitle">Add scheduled check</h3>
+                    <form id="scheduleForm" class="schedule-form">
+                        <input type="hidden" id="scheduleJobId" name="jobId" value="">
+                        <div class="form-group">
+                            <label for="scheduleName">Name</label>
+                            <input type="text" id="scheduleName" name="name" placeholder="e.g. System status every 5 min" aria-describedby="scheduleNameHint">
+                            <span id="scheduleNameHint" class="form-hint">Short label for this job.</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="scheduleRequest">Request (what to ask the AI)</label>
+                            <textarea id="scheduleRequest" name="request" rows="3" placeholder="e.g. Give me a brief system status. Are there any errors or warnings?" required></textarea>
+                            <span class="form-hint">Same as in Chat: status, logs, ping, etc.</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="scheduleType">Type</label>
+                            <select id="scheduleType" name="type" aria-describedby="scheduleTypeHint">
+                                <option value="recurring">Recurring (every N minutes)</option>
+                                <option value="once">Once at a set time</option>
+                            </select>
+                            <span id="scheduleTypeHint" class="form-hint">Recurring runs on an interval; Once runs a single time.</span>
+                        </div>
+                        <div id="scheduleIntervalGroup" class="form-group">
+                            <label for="scheduleIntervalMinutes">Interval (minutes)</label>
+                            <input type="number" id="scheduleIntervalMinutes" name="intervalMinutes" min="1" max="10080" value="5" placeholder="5">
+                        </div>
+                        <div id="scheduleRunAtGroup" class="form-group" style="display: none;">
+                            <label for="scheduleRunAt">Run at (date &amp; time)</label>
+                            <input type="datetime-local" id="scheduleRunAt" name="runAt">
+                        </div>
+                        <div class="form-group">
+                            <label for="scheduleNotify">Notify by email</label>
+                            <select id="scheduleNotify" name="notify">
+                                <option value="never">Never</option>
+                                <option value="on_issues">Only when issues are detected</option>
+                                <option value="always">Every run</option>
+                            </select>
+                            <span class="form-hint">Requires email configured in Config.</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="scheduleNotifyEmail">Notify to (optional)</label>
+                            <input type="text" id="scheduleNotifyEmail" name="notifyEmail" placeholder="Leave blank for default from Config">
+                        </div>
+                        <div class="form-group form-group-checkbox">
+                            <label for="scheduleEnabled">
+                                <input type="checkbox" id="scheduleEnabled" name="enabled" checked> Enabled
+                            </label>
+                        </div>
+                        <div class="form-group form-group-actions">
+                            <button type="submit" class="btn-primary" id="scheduleSubmitBtn">Add</button>
+                            <button type="button" class="btn-secondary" id="scheduleCancelBtn">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+        </main>
+
+        <!-- Configuration Tab -->
+        <main id="configTab" class="tab-content config-page">
+            <div class="config-header">
+                <h2 class="config-page-title">Configuration</h2>
+                <p class="config-intro">Manage the AI provider, monitoring sources, and server. Save changes at the bottom.</p>
+            </div>
+
+            <div class="config-layout">
+                <div class="config-main">
+                    <form id="configForm">
+                        <!-- Config Tabs Navigation -->
+                        <nav class="config-tabs">
+                            <button type="button" class="config-tab-button active" data-config-tab="ai">AI / Language Model</button>
+                            <button type="button" class="config-tab-button" data-config-tab="monitoring">Monitoring / Data Sources</button>
+                            <button type="button" class="config-tab-button" data-config-tab="server">Server / Application</button>
+                            <button type="button" class="config-tab-button" data-config-tab="email">Email / Notifications</button>
+                        </nav>
+
+                        <!-- AI / LLM Tab -->
+                        <div id="configTabAi" class="config-tab-content active">
+                            <section class="config-section" aria-labelledby="section-ai-heading">
+                            <h2 id="section-ai-heading" class="config-section-title">
+                                <span class="config-section-icon">AI</span>
+                                Language model
+                            </h2>
+                            <p class="config-section-desc">Choose where the assistant gets its answers. Configure one provider below.</p>
+                            <div class="form-group">
+                                <label for="llmProvider">Provider</label>
+                                <select id="llmProvider" name="llmProvider" required aria-describedby="llmProviderHint">
+                                    <option value="openai">OpenAI (cloud)</option>
+                                    <option value="ollama">Ollama (local)</option>
+                                </select>
+                                <span id="llmProviderHint" class="form-hint">Switch to configure API key or local server.</span>
+                            </div>
+                            <div class="config-provider-panel" id="openaiSection">
+                                <h3 class="config-subtitle">OpenAI</h3>
+                                <div class="form-group">
+                                    <label for="openaiApiKey">API key</label>
+                                    <input type="password" id="openaiApiKey" name="openaiApiKey" placeholder="sk-..." autocomplete="off" aria-describedby="openaiKeyHint">
+                                    <span id="openaiKeyHint" class="form-hint">Stored locally; never sent except to OpenAI.</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="openaiModel">Model</label>
+                                    <input type="text" id="openaiModel" name="openaiModel" placeholder="gpt-4o-mini" value="gpt-4o-mini" aria-describedby="openaiModelHint">
+                                    <span id="openaiModelHint" class="form-hint">e.g. gpt-4o-mini, gpt-4, gpt-3.5-turbo</span>
+                                </div>
+                            </div>
+                            <div class="config-provider-panel" id="ollamaSection" style="display: none;">
+                                <h3 class="config-subtitle">Ollama</h3>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="ollamaBaseUrl">Base URL</label>
+                                        <input type="url" id="ollamaBaseUrl" name="ollamaBaseUrl" placeholder="http://localhost:11434" value="http://localhost:11434">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="ollamaModel">Model</label>
+                                        <input type="text" id="ollamaModel" name="ollamaModel" placeholder="llama2" value="llama2" aria-describedby="ollamaModelHint">
+                                    </div>
+                                </div>
+                                <span id="ollamaModelHint" class="form-hint">e.g. llama2, mistral, codellama</span>
+                                <div class="form-group form-group-actions">
+                                    <button type="button" id="testOllama" class="btn-secondary">Test connection</button>
+                                </div>
+                            </div>
+                            <div class="form-group form-group-checkbox">
+                                <label for="debugShowThoughtStream">
+                                    <input type="checkbox" id="debugShowThoughtStream" name="debugShowThoughtStream" aria-describedby="debugShowThoughtStreamHint">
+                                    Show thought stream (debug)
+                                </label>
+                                <span id="debugShowThoughtStreamHint" class="form-hint">Stream the AI response token-by-token in chat so you can see it as it’s generated.</span>
+                            </div>
+                            </section>
+                        </div>
+
+                        <!-- Monitoring Tab -->
+                        <div id="configTabMonitoring" class="config-tab-content">
+                            <section class="config-section" aria-labelledby="section-monitoring-heading">
+                            <h2 id="section-monitoring-heading" class="config-section-title">
+                                <span class="config-section-icon">Monitoring</span>
+                                Data sources
+                            </h2>
+                            <p class="config-section-desc">UniFi Network and Site Manager. The AI uses this when answering questions and for IP lookup.</p>
+
+                            <div class="monitor-subsection">
+                                <h3 class="config-subtitle">UniFi Network</h3>
+                                <p class="form-hint block">Add controllers to pull devices and clients. Required for IP lookup.</p>
+                                <div class="form-group">
+                                    <div id="unifiControllersList" class="controller-list"></div>
+                                    <button type="button" id="addUnifiControllerBtn" class="btn-add">+ Add controller</button>
+                                </div>
+                                <template id="unifiControllerTemplate">
+                                    <div class="unifi-controller-item controller-card" data-controller-id="">
+                                        <div class="controller-header">
+                                            <h4 class="controller-title">UniFi Controller</h4>
+                                            <button type="button" class="controller-remove-btn" title="Remove controller" aria-label="Remove controller">×</button>
+                                        </div>
+                                        <div class="controller-content">
+                                            <div class="form-group form-group-inline">
+                                                <label><input type="checkbox" class="controller-enabled" checked> Enable</label>
+                                            </div>
+                                            <div class="form-row form-row-2">
+                                                <div class="form-group">
+                                                    <label>Name</label>
+                                                    <input type="text" class="controller-name" placeholder="e.g. Main Office" required>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Site</label>
+                                                    <input type="text" class="controller-site" placeholder="default" value="default">
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Controller URL</label>
+                                                <input type="url" class="controller-baseUrl" placeholder="https://10.0.0.1" required>
+                                                <span class="form-hint">Use /proxy/network or /unifi-api/network only if required.</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>API key</label>
+                                                <input type="password" class="controller-apiKey" placeholder="API key" autocomplete="off" required>
+                                                <span class="form-hint">Network → Control Plane → Integrations (or Settings → API Access)</span>
+                                            </div>
+                                            <div class="form-group form-group-inline">
+                                                <label><input type="checkbox" class="controller-verifySSL" checked> Verify SSL</label>
+                                            </div>
+                                            <div class="test-row">
+                                                <button type="button" class="controller-test-btn btn-secondary">Test</button>
+                                                <span class="controller-test-result" aria-live="polite"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="monitor-subsection">
+                                <h3 class="config-subtitle">UniFi Site Manager (cloud)</h3>
+                                <p class="form-hint block">Sites and devices from your UI account (api.ui.com).</p>
+                                <div class="form-group form-group-inline">
+                                    <label><input type="checkbox" id="siteManagerEnabled" name="siteManagerEnabled"> Enable Site Manager</label>
+                                </div>
+                                <div class="form-row form-row-2">
+                                    <div class="form-group">
+                                        <label for="siteManagerApiKey">API key</label>
+                                        <input type="password" id="siteManagerApiKey" name="siteManagerApiKey" placeholder="API key" autocomplete="off">
+                                        <span class="form-hint">Settings → API Keys in your UI account</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="siteManagerBaseUrl">Base URL</label>
+                                        <input type="url" id="siteManagerBaseUrl" name="siteManagerBaseUrl" placeholder="https://api.ui.com" value="https://api.ui.com">
+                                    </div>
+                                </div>
+                                <div class="test-row">
+                                    <button type="button" id="testSiteManagerBtn" class="btn-secondary">Test connection</button>
+                                    <span id="siteManagerTestResult" class="test-result" aria-live="polite"></span>
+                                </div>
+                            </div>
+                            </section>
+                        </div>
+
+                        <!-- Server Tab -->
+                        <div id="configTabServer" class="config-tab-content">
+                            <section class="config-section" aria-labelledby="section-server-heading">
+                            <h2 id="section-server-heading" class="config-section-title">
+                                <span class="config-section-icon">Server</span>
+                                Application
+                            </h2>
+                            <p class="config-section-desc">Port and logging. Restart the app after changing the port.</p>
+                            <div class="form-row form-row-2">
+                                <div class="form-group">
+                                    <label for="port">Port</label>
+                                    <input type="number" id="port" name="port" min="1" max="65535" value="3000" required aria-describedby="portHint">
+                                    <span id="portHint" class="form-hint">Web UI and API (restart required)</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="logLevel">Log level</label>
+                                    <select id="logLevel" name="logLevel" aria-describedby="logLevelHint">
+                                        <option value="DEBUG">DEBUG</option>
+                                        <option value="INFO" selected>INFO</option>
+                                        <option value="WARN">WARN</option>
+                                        <option value="ERROR">ERROR</option>
+                                    </select>
+                                    <span id="logLevelHint" class="form-hint">Verbosity of server logs</span>
+                                </div>
+                            </div>
+                            </section>
+                        </div>
+
+                        <!-- Email / Notifications Tab -->
+                        <div id="configTabEmail" class="config-tab-content">
+                            <section class="config-section" aria-labelledby="section-email-heading">
+                            <h2 id="section-email-heading" class="config-section-title">
+                                <span class="config-section-icon">Email</span>
+                                Notifications
+                            </h2>
+                            <p class="config-section-desc">SMTP settings for email notifications. Notification triggers will be configured later; use this to set up the email system and send a test.</p>
+                            <div class="form-group form-group-checkbox">
+                                <label for="emailEnabled">
+                                    <input type="checkbox" id="emailEnabled" name="emailEnabled" aria-describedby="emailEnabledHint">
+                                    Enable email notifications
+                                </label>
+                                <span id="emailEnabledHint" class="form-hint">When enabled, notifications can be sent to the address below (triggers configured later).</span>
+                            </div>
+                            <h3 class="config-subtitle">SMTP Server</h3>
+                            <div class="form-row form-row-2">
+                                <div class="form-group">
+                                    <label for="smtpHost">SMTP server address</label>
+                                    <input type="text" id="smtpHost" name="smtpHost" placeholder="smtp.example.com" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label for="smtpPort">Port</label>
+                                    <input type="number" id="smtpPort" name="smtpPort" min="1" max="65535" value="587" placeholder="587">
+                                    <span class="form-hint">Usually 587 (TLS) or 465 (SSL)</span>
+                                </div>
+                            </div>
+                            <div class="form-group form-group-checkbox">
+                                <label for="smtpSecure">
+                                    <input type="checkbox" id="smtpSecure" name="smtpSecure">
+                                    Use SSL/TLS (port 465)
+                                </label>
+                            </div>
+                            <h3 class="config-subtitle">Authentication (optional)</h3>
+                            <div class="form-row form-row-2">
+                                <div class="form-group">
+                                    <label for="smtpUser">Username</label>
+                                    <input type="text" id="smtpUser" name="smtpUser" placeholder="user@example.com" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label for="smtpPass">Password</label>
+                                    <input type="password" id="smtpPass" name="smtpPass" placeholder="••••••••" autocomplete="off">
+                                </div>
+                            </div>
+                            <h3 class="config-subtitle">From &amp; To</h3>
+                            <div class="form-group">
+                                <label for="emailFrom">From address</label>
+                                <input type="text" id="emailFrom" name="emailFrom" placeholder="NetworkBot &lt;noreply@example.com&gt;" aria-describedby="emailFromHint">
+                                <span id="emailFromHint" class="form-hint">Shown as the sender of notification emails.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="emailTo">Default recipient (To)</label>
+                                <input type="text" id="emailTo" name="emailTo" placeholder="admin@example.com" aria-describedby="emailToHint">
+                                <span id="emailToHint" class="form-hint">Who receives the notifications. Used for test email.</span>
+                            </div>
+                            <div class="form-group form-group-actions">
+                                <button type="button" id="testEmailBtn" class="btn-secondary">Send test notification</button>
+                                <span id="emailTestResult" class="test-result" aria-live="polite"></span>
+                            </div>
+                            </section>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Save configuration</button>
+                            <button type="button" id="reloadBtn" class="btn-secondary">Reload from file</button>
+                            <button type="button" id="testConfigBtn" class="btn-secondary">Test configuration</button>
+                        </div>
+                    </form>
+                </div>
+                <aside class="config-sidebar">
+                    <section class="config-status-card" aria-labelledby="status-heading">
+                        <h2 id="status-heading" class="config-status-title">Current status</h2>
+                        <div id="statusInfo" class="status-info">
+                            <dl class="status-list">
+                                <dt>Provider</dt>
+                                <dd id="currentProvider">—</dd>
+                                <dt>Status</dt>
+                                <dd id="currentStatus">Loading…</dd>
+                                <dt>Last updated</dt>
+                                <dd id="lastUpdated">—</dd>
+                            </dl>
+                        </div>
+                    </section>
+                </aside>
+            </div>
+        </main>
+
+        <footer>
+            <p>NETWORKBOT_AI // MONITORING INTERFACE</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="app.js"></script>
+    <script src="chat.js"></script>
+</body>
+</html>
