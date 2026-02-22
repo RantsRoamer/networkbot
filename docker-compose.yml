@@ -2,7 +2,8 @@ version: "3.8"
 
 services:
   networkbot:
-    build: .
+    image: https://github.com/RantsRoamer/networkbot:latest
+    # build: .
     container_name: networkbot
     # Optional: add env_file: .env if you have a .env file (not required; use platform env vars or web UI config)
     ports:
