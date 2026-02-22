@@ -24,7 +24,7 @@
 
 1. **Clone the repo**:
    ```bash
-   git clone https://github.com/your-username/networkbot-ai.git
+   git clone https://github.com/RantsRoamer/networkbot/networkbot.git
    cd networkbot-ai
    ```
 2. **Create a `.env` file** (optional; you can configure everything in the web UI):
