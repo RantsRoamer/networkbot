@@ -25,7 +25,7 @@
 1. **Clone the repo**:
    ```bash
    git clone https://github.com/RantsRoamer/networkbot/networkbot.git
-   cd networkbot-ai
+   cd networkbot
    ```
 2. **Create a `.env` file** (optional; you can configure everything in the web UI):
    ```ini
@@ -158,7 +158,7 @@ Enable in the web UI under **Configuration → Monitoring → UniFi Site Manager
 ## 📁 Project Structure
 
 ```
-networkbot-ai/
+networkbot/
 ├─ app.js             # Express server, API routes, chat & config
 ├─ public/            # Web UI (Matrix-style)
 ├─ utils/
