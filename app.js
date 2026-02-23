@@ -7,8 +7,9 @@ const path = require('path');
 const basicAuth = require('express-basic-auth');
 const { aiQuery, streamQuery, getLLMConfig, initializeOpenAI, testOllamaConnection } = require('./utils/llm');
 const { getConfig, updateConfig, reloadConfig } = require('./utils/config');
-const { getMonitoringContext, getMonitoringData, lookupClientByIp, testUniFiConnection, testUniFiSiteManagerConnection, requestSiteManagerPath } = require('./utils/monitoring');
+const { getMonitoringContext, getMonitoringData, lookupClientByIp, testUniFiConnection, testUniFiSiteManagerConnection, requestSiteManagerPath, invalidateMonitoringCache } = require('./utils/monitoring');
 const { sendTestEmail } = require('./utils/email');
+const { sendWebhook, testWebhook } = require('./utils/webhook');
 const scheduler = require('./utils/scheduler');
 
 // Load configuration
@@ -178,8 +179,12 @@ webApp.use('/api', basicAuth({
     const authConfig = getAuthConfig();
     const validUser = Object.keys(authConfig.users)[0];
     const validPassword = authConfig.users[validUser];
-    // Use safe string comparison
-    return username === validUser && password === validPassword;
+    const ok = basicAuth.safeCompare(username, validUser) && basicAuth.safeCompare(password, validPassword);
+    if (!ok) {
+      const safeUser = typeof username === 'string' ? username.slice(0, 50).replace(/[^\w@.\-]/g, '?') : '?';
+      addDashboardLog('warning', 'auth', 'Failed authentication attempt', `User: ${safeUser}`);
+    }
+    return ok;
   },
   challenge: true,
   realm: 'NetworkBot Configuration',
@@ -223,19 +228,27 @@ webApp.put('/api/config', async (req, res) => {
       if (existing && existing !== '***hidden***') updates.email.smtp.auth.pass = existing;
     }
     const updatedConfig = updateConfig(updates);
-    
+
     // Reload config
     config = getConfig();
-    
+
     // Reinitialize OpenAI if provider changed
     if (updates.llm?.provider || updates.llm?.openai?.apiKey) {
       initializeOpenAI();
     }
+
+    // Invalidate monitoring cache when monitoring config changes
+    if (updates.monitoring) {
+      invalidateMonitoringCache();
+    }
     
-    // Don't send password in response
+    // Don't send sensitive fields in response
     const safeConfig = JSON.parse(JSON.stringify(updatedConfig));
     if (safeConfig.web?.auth?.password) {
       safeConfig.web.auth.password = '***hidden***';
+    }
+    if (safeConfig.llm?.openai?.apiKey) {
+      safeConfig.llm.openai.apiKey = safeConfig.llm.openai.apiKey ? '***hidden***' : '';
     }
     if (safeConfig.monitoring?.unifi?.controllers) {
       safeConfig.monitoring.unifi.controllers = safeConfig.monitoring.unifi.controllers.map(c => ({
@@ -260,6 +273,16 @@ webApp.put('/api/config', async (req, res) => {
 webApp.post('/api/config/test-email', async (req, res) => {
   try {
     const result = await sendTestEmail();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/config/test-webhook - Send a test webhook using current config
+webApp.post('/api/config/test-webhook', async (req, res) => {
+  try {
+    const result = await testWebhook();
     res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -310,6 +333,7 @@ webApp.post('/api/config/reload', (req, res) => {
   try {
     const reloadedConfig = reloadConfig();
     initializeOpenAI(); // Reinitialize OpenAI client
+    invalidateMonitoringCache(); // Clear stale monitoring cache
     
     const safeConfig = JSON.parse(JSON.stringify(reloadedConfig));
     if (safeConfig.web?.auth?.password) {
@@ -348,8 +372,8 @@ webApp.get('/api/monitoring/cloud', async (req, res) => {
 // POST /api/monitoring/cloud-request - Request an arbitrary cloud API path (e.g. { "path": "/api/list-alerts" })
 webApp.post('/api/monitoring/cloud-request', async (req, res) => {
   try {
-    const path = req.body?.path;
-    const result = await requestSiteManagerPath(path);
+    const apiPath = req.body?.path;
+    const result = await requestSiteManagerPath(apiPath);
     if (!result.success) {
       return res.status(400).json(result);
     }
@@ -605,8 +629,8 @@ webApp.get('/', (req, res) => {
       console.log(`🤖 Ollama Model: ${llmConfig.ollama.model}`);
     }
     
-    webApp.listen(PORT, async () => {
-      console.log(`🌐 NetworkBot running at http://localhost:${PORT}`);
+    webApp.listen(PORT, '0.0.0.0', async () => {
+      console.log(`🌐 NetworkBot running at http://0.0.0.0:${PORT}`);
       addDashboardLog('info', 'server', 'NetworkBot started', `Port ${PORT}`);
       const authConfig = getAuthConfig();
       const username = Object.keys(authConfig.users)[0];

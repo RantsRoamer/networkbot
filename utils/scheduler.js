@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { getConfig } = require('./config');
 const { sendEmail } = require('./email');
+const { sendWebhook } = require('./webhook');
 
 const SCHEDULES_FILE = path.join(__dirname, '..', 'schedules.json');
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;   // 30 seconds
@@ -116,6 +117,17 @@ async function runJob(job, addDashboardLog) {
       });
     }
 
+    // Webhook notification (uses same notify conditions as email)
+    if (shouldNotifyAlways || shouldNotifyOnIssues) {
+      const whTitle = shouldNotifyOnIssues
+        ? `Issues detected: ${(job.name || job.request || 'Scheduled check').slice(0, 80)}`
+        : `Scheduled check: ${(job.name || job.request || 'Check').slice(0, 80)}`;
+      const whText = `Ran at: ${now}\nRequest: ${job.request}\n\n${(responseText || 'No response.').slice(0, 3000)}`;
+      sendWebhook({ title: whTitle, text: whText }).catch((e) =>
+        console.error('[Scheduler] Webhook notification failed:', e.message)
+      );
+    }
+
     if (job.type === 'recurring' && job.intervalMinutes > 0) {
       const next = new Date(Date.now() + job.intervalMinutes * 60 * 1000);
       job.nextRunAt = next.toISOString();
@@ -141,6 +153,12 @@ async function runJob(job, addDashboardLog) {
         subject: `NetworkBot – Scheduled check failed: ${(job.name || job.request || 'Check').slice(0, 50)}`,
         text: `Scheduled check failed at ${now}\n\nRequest: ${job.request}\n\nError: ${job.lastError}`,
       }).catch((e) => console.error('[Scheduler] Failed to send error email:', e.message));
+    }
+    if (notify === 'on_issues' || notify === 'always') {
+      sendWebhook({
+        title: `Scheduled check FAILED: ${(job.name || job.request || 'Check').slice(0, 80)}`,
+        text: `Failed at: ${now}\nRequest: ${job.request}\n\nError: ${job.lastError}`,
+      }).catch((e) => console.error('[Scheduler] Webhook error notification failed:', e.message));
     }
   }
 }

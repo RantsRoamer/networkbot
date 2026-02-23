@@ -40,11 +40,16 @@ const DEFAULT_CONFIG = {
   },
   web: {
     enabled: true,
-    port: 3001, // Separate port for web interface
+    port: 3000,
     auth: {
       username: 'admin',
       password: '', // Will be set from env or generated
     },
+  },
+  webhook: {
+    enabled: false,
+    url: '',
+    type: 'slack', // 'slack', 'discord', 'teams', 'ntfy', 'generic'
   },
   email: {
     enabled: false,

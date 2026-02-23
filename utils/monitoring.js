@@ -11,12 +11,15 @@ const {
   runPing,
   runTraceroute,
   testPort,
+  runDnsLookup,
   detectPingRequest,
   detectPingIntentWithoutHost,
   detectTracerouteRequest,
   detectTracerouteIntentWithoutHost,
   detectPortTestRequest,
   detectPortTestIntentWithoutHost,
+  detectDnsRequest,
+  detectDnsIntentWithoutHost,
   extractPortFromMessage,
   resolveHostFromConversation,
 } = require('./diagnostics');
@@ -351,8 +354,10 @@ class UniFiMonitor {
   }
 
   /**
-   * Get intrusion detection / IPS / threat events if available (UDM/UniFi OS).
-   * Tries stat/ips, rest/ips, stat/threat, rest/threat; normalizes various response shapes.
+   * Get intrusion detection / IPS / threat events.
+   * 1. Tries dedicated endpoints: stat/ips, rest/ips, stat/threat, rest/threat.
+   * 2. Falls back to POST stat/event with _type filter (some controller versions).
+   * Note: event-log IPS filtering is also done in getSiteData after fetching siteEvents.
    */
   async getIntrusionEvents(limit = 50) {
     const normalize = (raw) => {
@@ -379,6 +384,26 @@ class UniFiMonitor {
         continue;
       }
     }
+
+    // Fallback: POST to stat/event with _type filter (supported on some controller versions)
+    try {
+      const base = this.getApiBaseUrl();
+      const url = `${base}/api/s/${this.site}/stat/event`;
+      const headers = {};
+      if (this.apiKey) headers['X-API-Key'] = this.apiKey;
+      if (this.cookie) {
+        headers['Cookie'] = this.cookie;
+        if (this.csrfToken) headers['X-CSRF-Token'] = this.csrfToken;
+      }
+      const res = await axios.post(
+        url,
+        { _type: 'ips', _limit: limit },
+        this.getRequestOptions(headers)
+      );
+      const list = normalize(res.data);
+      if (list.length > 0) return list.slice(0, limit);
+    } catch (_) {}
+
     return [];
   }
 
@@ -899,10 +924,35 @@ class UniFiSiteManagerMonitor {
   }
 }
 
+// Simple in-memory cache for monitoring data (45-second TTL)
+// Prevents hammering UniFi/Site Manager APIs on every chat message
+let _monitoringCache = null;
+let _monitoringCacheAt = 0;
+const MONITORING_CACHE_TTL_MS = 45 * 1000;
+
+/**
+ * Invalidate the monitoring cache (call after config changes)
+ */
+function invalidateMonitoringCache() {
+  _monitoringCache = null;
+  _monitoringCacheAt = 0;
+}
+
 /**
  * Get monitoring data from all configured sources
  */
 async function getMonitoringData() {
+  const now = Date.now();
+  if (_monitoringCache && (now - _monitoringCacheAt) < MONITORING_CACHE_TTL_MS) {
+    return _monitoringCache;
+  }
+  const data = await _fetchMonitoringData();
+  _monitoringCache = data;
+  _monitoringCacheAt = Date.now();
+  return data;
+}
+
+async function _fetchMonitoringData() {
   const monitoringConfig = getMonitoringConfig();
   const data = {
     unifi: { controllers: [], summary: null },
@@ -945,7 +995,15 @@ async function getMonitoringData() {
             siteHealth: siteHealth && typeof siteHealth === 'object' ? siteHealth : {},
             portForwards: Array.isArray(portForwards) ? portForwards : [],
             routes: Array.isArray(routes) ? routes : [],
-            intrusionEvents: Array.isArray(intrusionEvents) ? intrusionEvents : [],
+            intrusionEvents: (() => {
+              if (Array.isArray(intrusionEvents) && intrusionEvents.length > 0) return intrusionEvents;
+              // Fallback: filter the already-fetched event log for IPS/threat events.
+              // UniFi surfaces IPS alerts in stat/event with keys like EVT_IPS_IpsAlert/IpsBlock.
+              const log = Array.isArray(siteEvents?.eventLog) ? siteEvents.eventLog : [];
+              return log
+                .filter((e) => /EVT_IPS_|EVT_IDS_|EVT_TRA_Threat/i.test(e.key || e.event_type || ''))
+                .slice(0, 50);
+            })(),
           };
         } catch (err) {
           return {
@@ -1191,6 +1249,23 @@ async function getMonitoringContext(query, conversationHistory = []) {
       context += '\n';
     } catch (e) {
       context += `\n\nPort test failed: ${e.message}\n`;
+    }
+  }
+
+  let dnsReq = msg ? detectDnsRequest(msg) : null;
+  if (!dnsReq && msg && detectDnsIntentWithoutHost(msg)) {
+    const host = resolveHostFromConversation(recentText + ' ' + msg);
+    // Only trigger if it looks like a hostname, not a bare IP
+    if (host && !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) dnsReq = { host };
+  }
+  if (dnsReq) {
+    try {
+      const result = await runDnsLookup(dnsReq.host);
+      context += `\n\nDNS lookup result for ${dnsReq.host}; use this to answer the user:\n`;
+      context += result.success ? result.output : `Failed: ${result.error}`;
+      context += '\n';
+    } catch (e) {
+      context += `\n\nDNS lookup failed: ${e.message}\n`;
     }
   }
 
@@ -1563,7 +1638,7 @@ async function getMonitoringContext(query, conversationHistory = []) {
         });
       });
     } else if ((monitoringData.unifi.controllers || []).some((c) => c.success)) {
-      context += `\nUniFi security/threat logs: no IPS/threat events returned from API (stat/ips, rest/ips, stat/threat tried). Traffic/threat data may be in the controller UI only.\n`;
+      context += `\nUniFi security/threat logs: no IPS/threat events found (tried stat/ips, stat/threat, POST stat/event filter, and event log IPS filter). IPS/IDS may not be enabled on this controller.\n`;
     }
   } else if (monitoringData.unifi?.controllers?.length > 0) {
     const controller = monitoringData.unifi.controllers[0];
@@ -1769,6 +1844,7 @@ module.exports = {
   testUniFiConnection,
   testUniFiSiteManagerConnection,
   requestSiteManagerPath,
+  invalidateMonitoringCache,
   UniFiMonitor,
   UniFiSiteManagerMonitor,
   PrometheusMonitor,

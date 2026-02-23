@@ -6,6 +6,7 @@ let chatHistory = [];
 document.addEventListener('DOMContentLoaded', () => {
     setupChat();
     setupTabs();
+    setupQuickActions();
     loadChatHistory();
     // Load dashboard data on init (Dashboard is the default tab)
     if (typeof loadDashboard === 'function') {
@@ -33,8 +34,39 @@ function setupTabs() {
             if (targetTab === 'dashboard' && typeof loadDashboard === 'function') {
                 loadDashboard();
             }
+            if (targetTab === 'devices' && typeof loadDeviceBoard === 'function') {
+                loadDeviceBoard();
+                if (typeof startDeviceAutoRefresh === 'function') {
+                    const chk = document.getElementById('devicesAutoRefresh');
+                    if (chk && chk.checked) startDeviceAutoRefresh();
+                }
+            } else {
+                // Stop auto-refresh when leaving devices tab
+                if (typeof stopDeviceAutoRefresh === 'function') stopDeviceAutoRefresh();
+            }
             if (targetTab === 'schedules' && typeof loadSchedules === 'function') {
                 loadSchedules();
+            }
+        });
+    });
+}
+
+// Setup quick-action preset buttons
+function setupQuickActions() {
+    document.querySelectorAll('.quick-action-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const msg = btn.getAttribute('data-message');
+            if (!msg) return;
+            const chatInput = document.getElementById('chatInput');
+            const chatTab = document.querySelector('[data-tab="chat"]');
+            // Switch to chat tab first if not already there
+            if (chatTab && !chatTab.classList.contains('active')) {
+                chatTab.click();
+            }
+            if (chatInput) {
+                chatInput.value = msg;
+                chatInput.focus();
+                document.getElementById('chatForm')?.dispatchEvent(new Event('submit'));
             }
         });
     });

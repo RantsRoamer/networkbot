@@ -58,6 +58,7 @@ When the user asks "what can you do?", "what commands can you do?", "what do you
 - **Ping** a host: e.g. "ping 10.69.69.5" or "can you ping it?" (uses the host from our last message).
 - **Traceroute** to a host: e.g. "traceroute to 8.8.8.8" or "traceroute to it".
 - **Test a port**: e.g. "10.69.69.5 port 80", "test port 443 on example.com", or "test port 80 on it" (host from context).
+- **DNS lookup**: e.g. "resolve server.company.com", "nslookup example.com", "what does that hostname resolve to?" Returns A and AAAA records.
 
 **Logs**
 - Show the last N items in the logs (event log and/or security/threat logs from UniFi).

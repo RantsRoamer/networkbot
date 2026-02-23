@@ -1336,3 +1336,210 @@ footer {
         width: 100%;
     }
 }
+
+/* ==================== Device Status Board ==================== */
+
+.devices-header-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.devices-title {
+    font-size: 1em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--text-color);
+    text-transform: uppercase;
+}
+
+.devices-last-update {
+    font-size: 0.78em;
+    color: var(--text-dim);
+    margin-right: auto;
+}
+
+.devices-autorefresh-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82em;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+}
+
+.devices-board {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.devices-controller-section {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.devices-controller-name {
+    font-size: 0.78em;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+}
+
+.device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+    gap: 10px;
+}
+
+.device-card {
+    position: relative;
+    background: var(--matrix-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px 12px 10px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+}
+
+.device-card.online {
+    border-color: rgba(0, 255, 65, 0.35);
+}
+
+.device-card.offline {
+    border-color: rgba(255, 68, 68, 0.45);
+}
+
+.device-card.online:hover {
+    box-shadow: 0 0 12px rgba(0, 255, 65, 0.12);
+}
+
+.device-card.offline:hover {
+    box-shadow: 0 0 12px rgba(255, 68, 68, 0.12);
+}
+
+.device-card-dot {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.device-card.online .device-card-dot {
+    background: var(--success-color);
+    box-shadow: 0 0 5px var(--success-color);
+}
+
+.device-card.offline .device-card-dot {
+    background: var(--error-color);
+}
+
+.device-card-name {
+    font-size: 0.88em;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 4px;
+    padding-right: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.device-card-type {
+    font-size: 0.7em;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.device-card-mac,
+.device-card-ip,
+.device-card-uptime {
+    font-size: 0.7em;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: inherit;
+}
+
+.device-card-status {
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 9px;
+}
+
+.device-card-status.online { color: var(--success-color); }
+.device-card-status.offline { color: var(--error-color); }
+
+.devices-loading,
+.devices-empty {
+    padding: 40px 24px;
+    text-align: center;
+}
+
+/* ==================== Quick-action buttons ==================== */
+
+.chat-quick-actions {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px 6px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--border-color);
+    background: var(--matrix-panel);
+}
+
+.quick-action-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 0.72em;
+    letter-spacing: 0.05em;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    white-space: nowrap;
+}
+
+.quick-action-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(0, 255, 65, 0.05);
+}
+
+@media (max-width: 600px) {
+    .device-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+
+    .devices-header-row {
+        padding: 14px 16px 10px;
+        gap: 10px;
+    }
+
+    .chat-quick-actions {
+        padding: 6px 10px 4px;
+        gap: 5px;
+    }
+
+    .quick-action-btn {
+        font-size: 0.68em;
+        padding: 3px 8px;
+    }
+}

@@ -1,6 +1,7 @@
-// utils/diagnostics.js – run ping, traceroute, and port check for AI-assisted diagnostics
+// utils/diagnostics.js – run ping, traceroute, port check, and DNS lookup for AI-assisted diagnostics
 
 const net = require('net');
+const dns = require('dns').promises;
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
@@ -168,6 +169,76 @@ function detectTracerouteIntentWithoutHost(message) {
     /^(?:traceroute|tracert)\s*(?:to\s+)?(it|that|them)\s*[?.]?$/i.test(m);
 }
 
+/**
+ * Perform a DNS lookup for a hostname.
+ * Tries A and AAAA record resolution, falls back to basic lookup.
+ * Returns { success, output, error }.
+ */
+async function runDnsLookup(host) {
+  const target = sanitizeHost(host);
+  if (!target) return { success: false, output: '', error: 'Invalid or missing host' };
+
+  const results = [];
+  let anySuccess = false;
+
+  for (const type of ['A', 'AAAA']) {
+    try {
+      const addrs = await dns.resolve(target, type);
+      if (addrs.length > 0) {
+        results.push(`${type}: ${addrs.join(', ')}`);
+        anySuccess = true;
+      }
+    } catch (_) { /* record type not found */ }
+  }
+
+  // Also try MX for completeness if A/AAAA found nothing
+  if (!anySuccess) {
+    try {
+      const { address, family } = await dns.lookup(target);
+      results.push(`IPv${family}: ${address}`);
+      anySuccess = true;
+    } catch (err) {
+      return { success: false, output: '', error: `DNS lookup failed for ${target}: ${err.message}` };
+    }
+  }
+
+  const output = `DNS results for ${target}:\n${results.join('\n')}`;
+  return { success: true, output, error: null };
+}
+
+/** Returns true if string looks like a plain IPv4 address */
+function isIPv4(s) {
+  return typeof s === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(s.trim());
+}
+
+/**
+ * Detect if user is asking for DNS lookup; extract host.
+ * Returns { host } or null. Does not trigger on plain IPs (those use IP lookup).
+ */
+function detectDnsRequest(message) {
+  const m = message.trim();
+  const patterns = [
+    /\b(?:resolve|nslookup|dig|dns\s+lookup)\s+([a-zA-Z0-9.\-_]+)/i,
+    /\bwhat\s+(?:does|do)\s+([a-zA-Z0-9.\-_]+)\s+resolve\s+to\b/i,
+    /\bwhat\s+(?:is\s+the\s+)?(?:ip|address|dns)\s+(?:of|for)\s+([a-zA-Z0-9.\-_]+)/i,
+    /\blook\s*up\s+(?:hostname\s+)?([a-zA-Z0-9.\-_]+)/i,
+  ];
+  for (const re of patterns) {
+    const match = m.match(re);
+    if (match?.[1] && !isIPv4(match[1])) {
+      return { host: match[1] };
+    }
+  }
+  return null;
+}
+
+/** Detect DNS intent without an explicit host ("resolve it", "what does it resolve to?") */
+function detectDnsIntentWithoutHost(message) {
+  const m = message.trim();
+  return /\b(?:resolve|nslookup|dig|look\s*up)\s*(it|that|them)?\s*[?.]?$/i.test(m) ||
+    /what\s+does\s+(?:it|that)\s+resolve\s+to/i.test(m);
+}
+
 const IPV4_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
 const HOSTNAME_REGEX = /\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b/g;
 
@@ -185,12 +256,15 @@ module.exports = {
   runPing,
   runTraceroute,
   testPort,
+  runDnsLookup,
   detectPingRequest,
   detectPingIntentWithoutHost,
   detectTracerouteRequest,
   detectTracerouteIntentWithoutHost,
   detectPortTestRequest,
   detectPortTestIntentWithoutHost,
+  detectDnsRequest,
+  detectDnsIntentWithoutHost,
   extractPortFromMessage,
   resolveHostFromConversation,
   sanitizeHost,

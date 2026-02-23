@@ -11,6 +11,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('schedulesTab')) {
         setupSchedulesEvents();
     }
+    if (document.getElementById('devicesTab')) {
+        setupDeviceBoard();
+    }
 });
 
 // Setup event listeners
@@ -29,6 +32,7 @@ function setupEventListeners() {
     document.getElementById('addUnifiControllerBtn')?.addEventListener('click', () => addUnifiController());
     document.getElementById('testSiteManagerBtn')?.addEventListener('click', testSiteManagerConnection);
     document.getElementById('testEmailBtn')?.addEventListener('click', testEmailConnection);
+    document.getElementById('testWebhookBtn')?.addEventListener('click', testWebhookConnection);
     setupUnifiControllers();
 
     document.getElementById('dashboardRefreshBtn')?.addEventListener('click', () => loadDashboard());
@@ -140,6 +144,16 @@ function populateForm(config) {
         document.getElementById('logLevel').value = config.server.logLevel || 'INFO';
     }
 
+    // Webhook
+    if (config.webhook) {
+        const webhookEnabledEl = document.getElementById('webhookEnabled');
+        const webhookUrlEl = document.getElementById('webhookUrl');
+        const webhookTypeEl = document.getElementById('webhookType');
+        if (webhookEnabledEl) webhookEnabledEl.checked = config.webhook.enabled === true;
+        if (webhookUrlEl) webhookUrlEl.value = config.webhook.url || '';
+        if (webhookTypeEl) webhookTypeEl.value = config.webhook.type || 'slack';
+    }
+
     // Email / Notifications
     if (config.email) {
         const emailEnabledEl = document.getElementById('emailEnabled');
@@ -205,6 +219,11 @@ async function handleSubmit(e) {
         server: {
             port: parseInt(formData.get('port')) || 3000,
             logLevel: formData.get('logLevel') || 'INFO',
+        },
+        webhook: {
+            enabled: document.getElementById('webhookEnabled')?.checked === true,
+            url: (document.getElementById('webhookUrl')?.value || '').trim(),
+            type: document.getElementById('webhookType')?.value || 'slack',
         },
         email: {
             enabled: document.getElementById('emailEnabled')?.checked === true,
@@ -471,6 +490,32 @@ async function testEmailConnection() {
             setTestResult(resultEl, '✓ ' + msg, true);
         } else {
             showStatus(`❌ Test email failed: ${msg}`, 'error');
+            setTestResult(resultEl, '✗ ' + msg, false);
+        }
+    } catch (err) {
+        showStatus(`Error: ${err.message}`, 'error');
+        setTestResult(resultEl, '✗ ' + err.message, false);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Send test webhook notification
+async function testWebhookConnection() {
+    const resultEl = document.getElementById('webhookTestResult');
+    const btn = document.getElementById('testWebhookBtn');
+    btn.disabled = true;
+    showStatus('Sending test webhook…', 'info');
+    setTestResult(resultEl, 'Sending…', null);
+    try {
+        const res = await fetch('/api/config/test-webhook', { method: 'POST' });
+        const result = await res.json();
+        const msg = result.error || (result.success ? 'Delivered' : 'Failed');
+        if (result.success) {
+            showStatus('✅ Test webhook delivered', 'success');
+            setTestResult(resultEl, '✓ ' + msg, true);
+        } else {
+            showStatus(`❌ Webhook failed: ${msg}`, 'error');
             setTestResult(resultEl, '✗ ' + msg, false);
         }
     } catch (err) {
@@ -789,5 +834,133 @@ async function runScheduleNow(id) {
             btn.textContent = 'Run';
         }
     }
+}
+
+// ==================== Device Status Board ====================
+
+let deviceRefreshTimer = null;
+
+function setupDeviceBoard() {
+    const refreshBtn = document.getElementById('devicesRefreshBtn');
+    const autoRefreshChk = document.getElementById('devicesAutoRefresh');
+
+    if (refreshBtn) refreshBtn.addEventListener('click', () => loadDeviceBoard());
+
+    if (autoRefreshChk) {
+        autoRefreshChk.addEventListener('change', () => {
+            if (autoRefreshChk.checked) {
+                startDeviceAutoRefresh();
+            } else {
+                stopDeviceAutoRefresh();
+            }
+        });
+    }
+}
+
+function startDeviceAutoRefresh() {
+    stopDeviceAutoRefresh();
+    deviceRefreshTimer = setInterval(() => loadDeviceBoard(), 30000);
+}
+
+function stopDeviceAutoRefresh() {
+    if (deviceRefreshTimer) {
+        clearInterval(deviceRefreshTimer);
+        deviceRefreshTimer = null;
+    }
+}
+
+async function loadDeviceBoard() {
+    const el = document.getElementById('devicesBoardContent');
+    if (!el) return;
+    el.innerHTML = '<div class="devices-loading"><span class="dashboard-loading">Loading devices…</span></div>';
+
+    try {
+        const res = await fetch('/api/monitoring/data');
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+
+        const lastUpdateEl = document.getElementById('devicesLastUpdate');
+        if (lastUpdateEl) lastUpdateEl.textContent = 'Updated: ' + new Date().toLocaleTimeString();
+
+        let html = '';
+
+        // UniFi Network controllers
+        const controllers = data.unifi?.controllers || [];
+        for (const ctrl of controllers) {
+            html += `<div class="devices-controller-section">`;
+            html += `<h3 class="devices-controller-name">${escapeHtml(ctrl.name || 'UniFi Controller')}</h3>`;
+            if (!ctrl.success) {
+                html += `<p class="dashboard-error">Error: ${escapeHtml(ctrl.error || 'Unknown error')}</p>`;
+            } else {
+                const devices = ctrl.metrics?.devicesList || [];
+                if (devices.length === 0) {
+                    html += '<p class="dashboard-muted">No devices found.</p>';
+                } else {
+                    html += '<div class="device-grid">';
+                    for (const d of devices) html += renderDeviceCard(d);
+                    html += '</div>';
+                }
+            }
+            html += '</div>';
+        }
+
+        // UniFi Site Manager cloud devices
+        if (data.siteManager?.success && data.siteManager?.metrics) {
+            const m = data.siteManager.metrics;
+            const devices = m.devicesList?.length ? m.devicesList : (m.rawDeviceList || []);
+            if (devices.length > 0) {
+                html += '<div class="devices-controller-section">';
+                html += '<h3 class="devices-controller-name">UniFi Site Manager (cloud)</h3>';
+                html += '<div class="device-grid">';
+                for (const d of devices) html += renderDeviceCard(d, true);
+                html += '</div></div>';
+            }
+        }
+
+        if (!html) {
+            html = '<div class="devices-empty"><p class="dashboard-muted">No monitoring data available. Configure UniFi Network or Site Manager in Config.</p></div>';
+        }
+
+        el.innerHTML = html;
+    } catch (err) {
+        el.innerHTML = `<p class="dashboard-error">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+function renderDeviceCard(d, isCloud = false) {
+    const name = d.name || d.hostname || d.display_name || d.device_name || d.label || '—';
+    const mac = d.mac || d.mac_address || d.serial || d.serial_number || d.id || '—';
+    const type = (d.type || d.model || d.device_type || '').toString().toUpperCase() || '—';
+    const ip = d.config_network?.ip || d.ip || d.ip_address || '';
+    const uptimeSec = d.uptime;
+
+    const rawState = d.state ?? d.connection_state ?? d.status ?? d.connection_status ?? d.connected ?? d.isOnline;
+    const offline =
+        rawState === false || rawState === 0 || rawState === '0' ||
+        String(rawState).toLowerCase() === 'offline' ||
+        String(rawState).toLowerCase() === 'disconnected';
+    const stateClass = offline ? 'offline' : 'online';
+    const stateLabel = offline ? 'Offline' : 'Online';
+    const uptimeStr = uptimeSec != null && !isNaN(uptimeSec) ? formatUptime(Number(uptimeSec)) : '';
+
+    return `<div class="device-card ${stateClass}">
+        <span class="device-card-dot"></span>
+        <div class="device-card-name" title="${escapeHtml(String(name))}">${escapeHtml(String(name).slice(0, 28))}</div>
+        <div class="device-card-type">${escapeHtml(String(type).slice(0, 20))}</div>
+        <div class="device-card-mac">${escapeHtml(String(mac).slice(0, 17))}</div>
+        ${ip ? `<div class="device-card-ip">${escapeHtml(String(ip))}</div>` : ''}
+        ${uptimeStr ? `<div class="device-card-uptime">${escapeHtml(uptimeStr)}</div>` : ''}
+        <div class="device-card-status ${stateClass}">${stateLabel}</div>
+    </div>`;
+}
+
+function formatUptime(seconds) {
+    if (!seconds || seconds < 0) return '';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `up ${d}d ${h}h`;
+    if (h > 0) return `up ${h}h ${m}m`;
+    return `up ${m}m`;
 }
 

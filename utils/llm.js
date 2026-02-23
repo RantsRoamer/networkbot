@@ -1,5 +1,5 @@
 // utils/llm.js
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 const axios = require('axios');
 const { getConfig } = require('./config');
 
@@ -25,8 +25,7 @@ function initializeOpenAI() {
   const config = getLLMConfig();
   if (config.provider === 'openai' && config.openai.apiKey) {
     try {
-      const configuration = new Configuration({ apiKey: config.openai.apiKey });
-      openai = new OpenAIApi(configuration);
+      openai = new OpenAI({ apiKey: config.openai.apiKey });
     } catch (error) {
       console.error('Error initializing OpenAI:', error.message);
       openai = null;
@@ -79,14 +78,14 @@ async function queryOpenAI(prompt, systemPrompt = null, conversationHistory = nu
   messages.push(...history);
   messages.push({ role: 'user', content: prompt });
 
-  const response = await openai.createChatCompletion({
+  const response = await openai.chat.completions.create({
     model: config.openai.model,
     messages: messages,
     temperature: 0.2,
     max_tokens: 4096,
   });
 
-  return response.data.choices[0].message.content.trim();
+  return response.choices[0].message.content.trim();
 }
 
 /**
@@ -208,52 +207,29 @@ async function* streamOllamaChat(prompt, systemPrompt = null, conversationHistor
 }
 
 /**
- * Stream OpenAI chat completion via axios (SSE). Yields text chunks.
+ * Stream OpenAI chat completion via SDK. Yields text chunks.
  */
 async function* streamOpenAIChat(prompt, systemPrompt = null, conversationHistory = null) {
   const config = getLLMConfig();
-  const apiKey = config.openai.apiKey;
-  if (!apiKey) throw new Error('OpenAI API key not configured.');
+  if (!openai && config.provider === 'openai') initializeOpenAI();
+  if (!openai) throw new Error('OpenAI API key not configured.');
 
   const messages = [];
   if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
   messages.push(...formatHistoryForApi(conversationHistory || []));
   messages.push({ role: 'user', content: prompt });
 
-  const response = await axios({
-    method: 'post',
-    url: 'https://api.openai.com/v1/chat/completions',
-    data: {
-      model: config.openai.model,
-      messages,
-      temperature: 0.2,
-      max_tokens: 4096,
-      stream: true,
-    },
-    responseType: 'stream',
-    timeout: AI_REQUEST_TIMEOUT_MS,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
+  const stream = await openai.chat.completions.create({
+    model: config.openai.model,
+    messages,
+    temperature: 0.2,
+    max_tokens: 4096,
+    stream: true,
   });
 
-  let buffer = '';
-  for await (const chunk of response.data) {
-    buffer += chunk.toString();
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data: ')) continue;
-      const data = trimmed.slice(6);
-      if (data === '[DONE]') return;
-      try {
-        const parsed = JSON.parse(data);
-        const text = parsed.choices?.[0]?.delta?.content;
-        if (typeof text === 'string' && text.length > 0) yield text;
-      } catch (_) {}
-    }
+  for await (const chunk of stream) {
+    const text = chunk.choices?.[0]?.delta?.content;
+    if (typeof text === 'string' && text.length > 0) yield text;
   }
 }
 
